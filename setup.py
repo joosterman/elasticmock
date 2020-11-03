@@ -22,7 +22,8 @@ setuptools.setup(
     packages=setuptools.find_packages(exclude=('tests')),
     install_requires=[
         'elasticsearch',
-        'mock'
+        'mock',
+        'mergedeep'
     ],
     classifiers=[
         'Environment :: Web Environment',

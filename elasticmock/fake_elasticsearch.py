@@ -6,12 +6,14 @@ import sys
 from elasticsearch import Elasticsearch
 from elasticsearch.client.utils import query_params
 from elasticsearch.exceptions import NotFoundError
+from mergedeep import merge
 
 from elasticmock.behaviour.server_failure import server_failure
 from elasticmock.utilities import extract_ignore_as_iterable, get_random_id, get_random_scroll_id
 from elasticmock.utilities.decorator import for_all_methods
 from elasticmock.fake_indices import FakeIndicesClient
 from elasticmock.fake_cluster import FakeClusterClient
+
 
 PY3 = sys.version_info[0] == 3
 if PY3:
@@ -199,7 +201,7 @@ class FakeElasticsearch(Elasticsearch):
     def index(self, index, body, doc_type='_doc', id=None, params=None, headers=None):
         if index not in self.__documents_dict:
             self.__documents_dict[index] = list()
-        
+
         version = 1
 
         if id is None:
@@ -425,9 +427,9 @@ class FakeElasticsearch(Elasticsearch):
                 'params': params
             }
             hits = hits[params.get('from'):params.get('from') + params.get('size')]
-        
+
         result['hits']['hits'] = hits
-        
+
         return result
 
     @query_params('scroll')
@@ -440,7 +442,7 @@ class FakeElasticsearch(Elasticsearch):
             params=scroll.get('params')
         )
         return result
-    
+
     @query_params('consistency', 'parent', 'refresh', 'replication', 'routing',
                   'timeout', 'version', 'version_type')
     def delete(self, index, doc_type, id, params=None, headers=None):
@@ -495,6 +497,50 @@ class FakeElasticsearch(Elasticsearch):
                 }
             ]
         return result_dict
+
+    @query_params(
+        "_source",
+        "_source_excludes",
+        "_source_includes",
+        "if_primary_term",
+        "if_seq_no",
+        "lang",
+        "refresh",
+        "retry_on_conflict",
+        "routing",
+        "timeout",
+        "wait_for_active_shards",
+    )
+    def update(self, index, id, body, doc_type=None, params=None, headers=None):
+        if 'script' in body:
+            raise NotImplementedError('Updating a document with a script is not supported')
+        if body.get('doc_as_upsert'):
+            raise NotImplementedError('doc_as_upsert is not supported')
+
+        doc = self.get(index=index, id=id, doc_type=doc_type, params=params, headers=headers)
+
+        if not doc.get('found'):
+            error_data = {
+                '_index': index,
+                '_type': doc_type,
+                '_id': id,
+                'found': False
+            }
+            raise NotFoundError(404, json.dumps(error_data))
+
+        source = doc.get('_source', {})
+        merge(source, body.get('doc', {}))
+        updated_doc = self.index(index=index, id=doc['_id'], doc_type=doc_type, body=source, params=params, headers=headers)
+
+        response = {
+            "_index": index,
+            "_type": doc_type,
+            "_id": id,
+            "_version": updated_doc["_version"],
+            "_source": source
+        }
+
+        return response
 
     def _normalize_index_to_list(self, index):
         # Ensure to have a list of index
