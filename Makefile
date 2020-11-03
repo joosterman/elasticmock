@@ -1,4 +1,4 @@
-ELASTICMOCK_VERSION='1.6.1'
+ELASTICMOCK_VERSION='1.6.2'
 
 install:
 	pip install -r requirements.txt
